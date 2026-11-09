@@ -2,7 +2,7 @@
 
 Offline recognition of specific operational vehicle models in aerial images using pretrained YOLO detection, EfficientNet-B3 visual embeddings, and a labeled reference gallery.
 
-**Status:** architecture and environment scaffold. Configuration inspection and the reference gallery are available. Model inference, asset preparation, augmentation, and evaluation are planned interfaces; their Python modules currently document responsibilities rather than implement the pipeline.
+**Status:** the first offline pipeline is implemented: model preparation, reference indexing, crop collection, reference augmentation, image/crop recognition, and experiment reports. Quantitative evaluation against the annotated forest dataset remains planned.
 
 ## Context and problem definition
 
@@ -42,9 +42,9 @@ flowchart LR
     G --> H[Predictions and annotated images]
 ```
 
-The central recognition module is `src/vehicle_recognition/similarity_efficientnet.py`. It will contain the feature extractor, reference database, cosine matching, and detector/recognizer integration. The surrounding modules handle datasets, offline orchestration, augmentation, and reporting.
+The central recognition module is `src/vehicle_recognition/similarity_efficientnet.py`. It contains the feature extractor, reference database, cosine matching, and detector/recognizer integration. The surrounding modules handle configuration, datasets, offline orchestration, augmentation, and reporting.
 
-The extractor uses the official public torchvision checkpoint **`EfficientNet_B3_Weights.IMAGENET1K_V1`**, pretrained on ImageNet-1K. No additional trained projection head is required. ImageNet pretraining supplies general visual representations; the labeled gallery supplies the association with the specific vehicle models. The checkpoint's preprocessing preset will be applied consistently to both reference and query images. See the [official EfficientNet-B3 documentation](https://docs.pytorch.org/vision/stable/models/generated/torchvision.models.efficientnet_b3.html).
+The extractor uses the official public torchvision checkpoint **`EfficientNet_B3_Weights.IMAGENET1K_V1`**, pretrained on ImageNet-1K. No additional trained projection head is required. ImageNet pretraining supplies general visual representations; the labeled gallery supplies the association with the specific vehicle models. The checkpoint's preprocessing preset is applied consistently to both reference and query images. See the [official EfficientNet-B3 documentation](https://docs.pytorch.org/vision/stable/models/generated/torchvision.models.efficientnet_b3.html).
 
 The initial detector candidate is the community [YOLOv8s checkpoint fine-tuned on VisDrone](https://huggingface.co/dronefreak/visdrone-yolov8s). Detector weights and the dataset used to train them are separate assets: using the weights does not require downloading VisDrone.
 
@@ -64,7 +64,11 @@ These 83 simulation-derived starter images are replaceable reference assets, not
 
 Adding references and rebuilding their index can extend the recognition catalog without retraining the detector, provided that the detector localizes the relevant vehicles and the embeddings distinguish them. Detection confidence and cosine similarity are separate measurements; a similarity score is not a calibrated probability of correctness.
 
-Optional reference augmentation and rotated-image inference are planned. Rotated detections must be transformed back to the original coordinates and deduplicated before reporting. The initial scope is offline still images; image ordering alone does not establish that detections show the same physical vehicle.
+Optional reference augmentation and rotated-image inference are available. Rotated detections are transformed back to original-image coordinates and associated across views using bounding-box IoU. Each resulting vehicle receives one prediction, combining the crops from its associated views. This is a geometric heuristic, not cross-image tracking.
+
+For explicitly associated crops of the same vehicle, recognition averages the per-class maximum similarities across observations. All class scores participate before the top candidates are selected, so a consistently similar class is not discarded because it was absent from an individual crop's top three. Independent vehicles are never pooled into one vote. The initial scope is offline still images; image ordering alone does not establish object identity.
+
+The reference index stores each image's embedding and a fingerprint of the gallery contents, checkpoint, preprocessing, extractor version, and recognition module implementation. A changed gallery or incompatible extractor causes inference to reject the stale index and request rebuilding it.
 
 ## Folder structure
 
@@ -83,19 +87,22 @@ Optional reference augmentation and rotated-image inference are planned. Rotated
 │   └── datasets.yaml                # Roboflow and optional VisDrone sources
 ├── src/vehicle_recognition/
 │   ├── __main__.py                  # python -m vehicle_recognition
-│   ├── cli.py                       # Scaffold/configuration inspection
-│   ├── similarity_efficientnet.py    # Planned EfficientNet-B3 recognition core
+│   ├── cli.py                       # Preparation and offline experiment commands
+│   ├── configuration.py             # Configuration, paths, and cache locations
+│   ├── similarity_efficientnet.py    # EfficientNet-B3 recognition core
 │   ├── reference_dataset_augmentation.py
 │   ├── datasets.py
 │   ├── pipeline.py
 │   ├── evaluation.py
 │   └── reporting.py
 ├── notebooks/                       # Planned dataset exploration and figures
+├── tests/                           # Similarity, coordinates, and data regressions
 ├── docs/
 │   ├── backlog.md
 │   └── images/vehicles/             # Vehicle illustrations embedded above
 ├── data/
 │   ├── reference_dataset/<label>/    # Versioned simulated aerial reference crops
+│   ├── reference_dataset_augmented/ # Ignored optional generated gallery
 │   ├── forest_vehicles/             # Ignored Roboflow export
 │   └── visdrone/                    # Ignored optional public dataset
 ├── artifacts/
@@ -141,7 +148,7 @@ Check GPU visibility from inside the CUDA container:
 docker run --rm --gpus all aerial-vehicles:cuda status --check-runtime
 ```
 
-Runtime selection is configured as `auto`, `cpu`, or `cuda`. The planned pipeline will resolve `auto` using CUDA availability inside the running environment, and an explicit `cuda` request will fail clearly if CUDA is unavailable.
+Runtime selection is configured as `auto`, `cpu`, or `cuda`, and can be overridden per command with `--device`. `auto` resolves using CUDA availability inside the running environment; an explicit `cuda` request fails clearly if CUDA is unavailable.
 
 For a local environment without Docker:
 
@@ -173,30 +180,76 @@ Persist local assets when running the container:
 
 ```bash
 docker run --rm --env-file .env \
+  --user "$(id -u):$(id -g)" \
   --mount type=bind,src="$PWD/data",dst=/app/data \
   --mount type=bind,src="$PWD/artifacts",dst=/app/artifacts \
   --mount type=bind,src="$PWD/outputs",dst=/app/outputs \
-  aerial-vehicles:cpu status
+  aerial-vehicles:cpu prepare
 ```
 
-Use `--gpus all` and the CUDA image for GPU execution. The preparation stage will write downloaded datasets; inference can mount its input dataset read-only.
+Reuse these mounts for `index`, `predict`, and the other commands below. Running with your UID/GID keeps generated files owned by your local account. Use `--gpus all` and the CUDA image for GPU execution. Preparation and augmentation write data; inference can mount its input dataset read-only.
 
-### Planned experiment sequence
+### Running an experiment
 
-The following describes the implementation target. **Only `status` is currently executable; the experiment commands below are not yet implemented.**
+From an installed local environment, run:
 
-| Planned operation | Purpose |
+```bash
+python -m vehicle_recognition prepare --device cpu
+python -m vehicle_recognition index --device cpu
+python -m vehicle_recognition predict --input docs/images/vehicles --device cpu
+```
+
+The illustration run is an execution demonstration, not a performance measurement. After downloading the annotated forest export, select its image directory as the input for final evaluation. Use a new output directory for each experiment, or omit `--output` to create a unique run automatically.
+
+Model downloads are explicit: `index` and `predict` use cached weights and do not automatically download missing models. `prepare` records the detector's resolved repository revision and weight checksums. Repeating preparation reuses cached assets. `--force` refreshes detector weights or reprepares selected datasets.
+
+| Operation | Purpose |
 | --- | --- |
-| `prepare` | Cache the YOLO and official EfficientNet-B3 weights; optionally download the configured Roboflow version |
+| `prepare` | Cache the YOLO and official EfficientNet-B3 weights |
+| `prepare --include-forest` | Also fetch or inspect a local Roboflow export and check its class names |
 | `prepare --include-visdrone` | Also download and convert VisDrone for exploratory analysis |
-| `augment-references` | Generate optional variants of reference crops |
+| `collect-crops --input <images>` | Export unlabeled vehicle crops for manual reference selection |
+| `augment-references` | Create a separate seeded gallery, preserving original crops and parent-image metadata |
 | `index` | Build embeddings and record the extractor, preprocessing, and gallery fingerprints |
-| `predict` | Run detection and similarity recognition on offline images |
-| `evaluate` | Compare saved predictions against the annotated evaluation dataset |
+| `predict --input <images>` | Run YOLO and similarity recognition on offline images |
+| `predict --input <crops> --crops` | Recognize already-cropped vehicles without running YOLO |
+| `predict --groups <manifest.json>` | Combine explicitly associated crops for each vehicle |
+| `evaluate` | Planned: quantify results against the annotated final dataset |
 
-The real forest dataset is reserved for final evaluation; the initial gallery is generated in simulation. Gallery examples and threshold calibration must remain independent of the final evaluation data. Each run will preserve the selected detector, extractor checkpoint, preprocessing, gallery fingerprint, thresholds, device, predictions, and timing. Planned reports separate missed detections, model confusions, and incorrect acceptance of unknown vehicles, allowing the robustness of transfer from simulation to real flights to be assessed.
+Useful experiment options:
+
+```bash
+# Explore a single VisDrone split before downloading the complete dataset.
+python -m vehicle_recognition prepare --include-visdrone --visdrone-splits val
+
+# Seeded reference variants are written outside the original gallery.
+python -m vehicle_recognition augment-references --variants 5 --seed 42
+python -m vehicle_recognition index --references data/reference_dataset_augmented --index artifacts/reference_indexes/efficientnet_b3_augmented.npz
+python -m vehicle_recognition predict --references data/reference_dataset_augmented --index artifacts/reference_indexes/efficientnet_b3_augmented.npz --input docs/images/vehicles
+
+# Detect multiple orientations, merge their boxes, and combine their crops.
+python -m vehicle_recognition predict --input docs/images/vehicles --rotations 0 90 180 270
+```
+
+The cosine threshold can be overridden with `--threshold`, and feature batch size with `--batch-size`. EfficientNet-B3 is the default. ConvNeXt-Base and ResNet50 are optional alternatives through `--backbone`; prepare and index each selected extractor before inference. Thresholds require separate development calibration for each representation and scenario.
+
+A crop-group manifest is a JSON object such as `{"vehicle_01": ["crops/view_01.jpg", "crops/view_02.jpg"]}`. Paths are relative to the manifest file. Group membership must be supplied explicitly; the application does not infer that separate frames contain the same object.
+
+Each run writes `run.json`, `predictions.json`, `predictions.jsonl`, `predictions.csv`, `summary.json`, and optional annotated images. Empty detections and rejected matches remain in the results. Image decoding failures are recorded, and an incomplete run returns a nonzero exit code. Metadata includes the resolved configuration, package versions, source-code fingerprint, detector checksum and source revision when prepared, and gallery/extractor identity. Cosine similarities and detection confidences are stored separately.
+
+The real forest dataset is reserved for final evaluation; the initial gallery is generated in simulation. Gallery examples and threshold calibration must remain independent of the final evaluation data. Quantitative metrics for missed detections, model confusions, and incorrect acceptance of unknown vehicles remain planned until the annotated evaluation workflow is implemented.
 
 VisDrone download is optional and disabled by default. It will support exploratory analysis of class frequencies, bounding-box sizes, and example scenes for presentation figures. Its broad detection labels are distinct from the five-model recognition catalog. See the [VisDrone dataset and download configuration](https://docs.ultralytics.com/datasets/detect/visdrone/).
+
+## Development checks
+
+Run the algorithm regression tests from an installed environment:
+
+```bash
+python -m unittest discover -s tests -v
+```
+
+These tests use synthetic embeddings, boxes, and small image fixtures. They do not download datasets or pretrained weights and do not estimate recognition accuracy.
 
 ## Planned extensions
 
