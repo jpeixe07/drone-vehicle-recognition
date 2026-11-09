@@ -1,0 +1,9 @@
+# Recognition labels only. Their list positions are not detector/dataset IDs.
+schema_version: 1
+labels:
+  - arquus_vt4
+  - panhard_vbl
+  - renault_ccfm
+  - renault_gbc180
+  - vltt
+unknown_label: unknown

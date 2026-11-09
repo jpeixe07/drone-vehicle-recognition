@@ -1,0 +1,43 @@
+# Repository-relative paths; run commands from the repository root.
+schema_version: 1
+device: auto  # auto, cpu, or cuda
+classes_file: configs/classes.yaml
+datasets_file: configs/datasets.yaml
+
+detector:
+  provider: ultralytics
+  weights: artifacts/weights/visdrone-yolov8s.pt
+  huggingface_repo: dronefreak/visdrone-yolov8s
+  huggingface_filename: best.pt
+  # Resolve names against the loaded checkpoint; never assume class IDs.
+  vehicle_classes: [car, van, truck, bus]
+  confidence_threshold: 0.4
+  iou_threshold: 0.5
+  image_size: 1280
+  crop_margin_pixels: 10
+
+recognition:
+  backbone: efficientnet_b3
+  weights: IMAGENET1K_V1
+  pretrained_on: imagenet1k
+  preprocessing: checkpoint_preset
+  feature_dimension: 1536
+  projection_head: false
+  normalization: l2
+  similarity: cosine
+  class_score: maximum_reference_similarity
+  top_k: 3
+  # Initial experimental value; not calibrated for forest evaluation.
+  acceptance_threshold: 0.78
+  unknown_label: unknown
+
+references:
+  directory: data/reference_dataset
+  index_directory: artifacts/reference_indexes
+  augmentation_enabled: false
+
+inference:
+  rotations_degrees: [0]
+  output_directory: outputs
+  save_annotated_images: true
+  prediction_formats: [json, csv]

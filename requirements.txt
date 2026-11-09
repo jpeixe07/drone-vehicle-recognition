@@ -1,0 +1,18 @@
+# Install the selected CPU or cu128 PyTorch wheels before this file.
+torch==2.9.1
+torchvision==0.24.1
+ultralytics==8.3.232
+
+# Shared desktop dependencies; complete transitive locking is future work.
+numpy==1.26.4
+Pillow>=10,<13
+opencv-python==4.10.0.84
+# Albumentations also requires the headless distribution. Match its cv2 ABI.
+opencv-python-headless==4.10.0.84
+scikit-learn>=1.5,<2
+albumentations>=2.0,<3
+PyYAML>=6,<7
+huggingface-hub>=0.34,<2
+roboflow>=1.2,<2
+matplotlib>=3.8,<4
+pandas>=2.2,<3

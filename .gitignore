@@ -1,0 +1,37 @@
+# Local credentials and environment
+.env
+.env.*
+!.env.example
+.venv/
+venv/
+.aws/
+.codex/
+.agents/
+
+# Python and build products
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+build/
+dist/
+.ipynb_checkpoints/
+
+# Large/generated assets; retain the small reference gallery
+*.zip
+*.pt
+*.pth
+*.onnx
+data/forest_vehicles/*
+!data/forest_vehicles/.gitkeep
+data/visdrone/*
+!data/visdrone/.gitkeep
+artifacts/weights/*
+!artifacts/weights/.gitkeep
+artifacts/reference_indexes/*
+!artifacts/reference_indexes/.gitkeep
+artifacts/cache/*
+!artifacts/cache/.gitkeep
+outputs/*
+!outputs/.gitkeep
