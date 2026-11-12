@@ -19,6 +19,8 @@
 ## Dataset exploration
 
 - [x] Add VisDrone class/box-size distributions and example scenes.
+- [x] Add a separate MVRSD EDA notebook using the original ScienceDB archive and named XML annotations.
+- [x] Add a VisDrone/MVRSD comparison notebook with explicit data provenance and distinct taxonomies.
 - [x] Generate presentation figures from saved, reproducible analysis runs.
 
 ## Future detector experiments

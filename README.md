@@ -95,7 +95,7 @@ The reference index stores each image's embedding and a fingerprint of the galle
 │   ├── pipeline.py
 │   ├── evaluation.py
 │   └── reporting.py
-├── notebooks/                       # Planned dataset exploration and figures
+├── notebooks/                       # Separate VisDrone/MVRSD EDA and comparison notebooks
 ├── tests/                           # Similarity, coordinates, and data regressions
 ├── docs/
 │   ├── backlog.md
@@ -104,6 +104,7 @@ The reference index stores each image's embedding and a fingerprint of the galle
 │   ├── reference_dataset/<label>/    # Versioned simulated aerial reference crops
 │   ├── reference_dataset_augmented/ # Ignored optional generated gallery
 │   ├── forest_vehicles/             # Ignored Roboflow export
+│   ├── mvrsd/                       # Ignored original ScienceDB MVRSD export
 │   └── visdrone/                    # Ignored optional public dataset
 ├── artifacts/
 │   ├── weights/                     # Versioned YOLOv8 and YOLO26 detector checkpoints
@@ -301,7 +302,7 @@ python -m vehicle_recognition evaluate --config configs/yolo26s_mvrsd_vis.yaml -
 
 Ultralytics loads the checkpoint through the standard `YOLO()` API and handles the checkpoint's end-to-end detection head. See the [official YOLO26 documentation](https://docs.ultralytics.com/models/yolo26/). The frozen EfficientNet reference index can be shared across detector comparisons.
 
-VisDrone download is optional and disabled by default. It will support exploratory analysis of class frequencies, bounding-box sizes, and example scenes for presentation figures. Its broad detection labels are distinct from the five-model recognition catalog. See the [VisDrone dataset and download configuration](https://docs.ultralytics.com/datasets/detect/visdrone/).
+VisDrone download is optional and disabled by default. The [exploration notebooks](notebooks/README.md) keep VisDrone and MVRSD analyses separate, with a third notebook comparing compatible class, geometry, and density summaries. MVRSD can be downloaded with `python scripts/prepare-mvrsd.py --download`. Raw data and generated analysis artifacts stay outside Git. Both datasets' categories remain distinct from the five-model recognition catalog. See the [VisDrone dataset and download configuration](https://docs.ultralytics.com/datasets/detect/visdrone/).
 
 ## Development checks
 
