@@ -12,6 +12,7 @@ venv
 **/*.zip
 data/forest_vehicles
 data/.forest-download-*
+data/mvrsd
 data/visdrone
 data/reference_dataset_augmented
 artifacts/*
