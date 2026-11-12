@@ -320,6 +320,8 @@ Training a detector on DroneVehicle is future work. It will provide a second det
 
 ## Sobrevoo local web interface
 
+**Guia em português:** [Instalação e execução do Sobrevoo (Windows e Linux)](docs/instalacao-sobrevoo.md). Inclui requisitos, preparação dos modelos, inicialização e soluções para erros comuns.
+
 After installing the project dependencies, prepare the weights and index from the
 repository root, then start the local server:
 
