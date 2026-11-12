@@ -7,6 +7,7 @@ venv/
 .aws/
 .codex/
 .agents/
+.vscode/
 
 # Python and build products
 __pycache__/
@@ -27,6 +28,7 @@ data/forest_vehicles/*
 !data/forest_vehicles/.gitkeep
 data/visdrone/*
 !data/visdrone/.gitkeep
+data/reference_dataset_augmented/
 artifacts/weights/*
 !artifacts/weights/.gitkeep
 artifacts/reference_indexes/*

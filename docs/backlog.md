@@ -2,18 +2,19 @@
 
 ## Initial offline pipeline
 
-- [ ] Implement the EfficientNet-B3 feature extractor in `similarity_efficientnet.py` using the official ImageNet-1K checkpoint and normalized pooled features.
-- [ ] Implement individual-reference cosine matching, maximum similarity per class, top candidates, and unknown rejection.
-- [ ] Implement YOLO integration with class-name-based filtering and configurable crop margins.
-- [ ] Build/load gallery indexes with checkpoint, preprocessing, and gallery compatibility metadata.
-- [ ] Add pretrained-weight preparation with recorded source revisions and hashes.
-- [ ] Add the Roboflow downloader after workspace and version are supplied; also accept an existing local export.
-- [ ] Add optional VisDrone downloading/conversion through `--include-visdrone`.
-- [ ] Implement seeded reference augmentation with parent-image metadata.
-- [ ] Implement offline directory inference and JSON/CSV/image reports.
-- [ ] Implement optional rotation inference with coordinate inversion and duplicate merging.
+- [x] Implement the EfficientNet-B3 feature extractor in `similarity_efficientnet.py` using the official ImageNet-1K checkpoint and normalized pooled features.
+- [x] Implement individual-reference cosine matching, maximum similarity per class, top candidates, and unknown rejection.
+- [x] Implement YOLO integration with class-name-based filtering and configurable crop margins.
+- [x] Build/load gallery indexes with checkpoint, preprocessing, and gallery compatibility metadata.
+- [x] Add pretrained-weight preparation with recorded source revisions and hashes.
+- [x] Add the optional Roboflow downloader and accept an existing local export.
+- [x] Add optional VisDrone downloading/conversion through `--include-visdrone`.
+- [x] Implement seeded reference augmentation with parent-image metadata.
+- [x] Implement offline directory inference and JSON/CSV/image reports.
+- [x] Implement optional rotation inference with coordinate inversion and duplicate merging.
 - [ ] Evaluate detection, model recognition, unknown rejection, and end-to-end results separately.
-- [ ] Verify CPU and CUDA image builds and pin a complete dependency resolution.
+- [ ] Exercise the final Roboflow export once its workspace, version, and annotations are available.
+- [ ] Pin a complete dependency resolution.
 
 ## Dataset exploration
 

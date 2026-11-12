@@ -9,6 +9,7 @@ detector:
   weights: artifacts/weights/visdrone-yolov8s.pt
   huggingface_repo: dronefreak/visdrone-yolov8s
   huggingface_filename: best.pt
+  huggingface_revision: main
   # Resolve names against the loaded checkpoint; never assume class IDs.
   vehicle_classes: [car, van, truck, bus]
   confidence_threshold: 0.4
@@ -27,6 +28,8 @@ recognition:
   similarity: cosine
   class_score: maximum_reference_similarity
   top_k: 3
+  batch_size: 16
+  cpu_threads: 4
   # Initial experimental value; not calibrated for forest evaluation.
   acceptance_threshold: 0.78
   unknown_label: unknown
@@ -34,10 +37,9 @@ recognition:
 references:
   directory: data/reference_dataset
   index_directory: artifacts/reference_indexes
-  augmentation_enabled: false
 
 inference:
   rotations_degrees: [0]
+  duplicate_iou_threshold: 0.5
   output_directory: outputs
   save_annotated_images: true
-  prediction_formats: [json, csv]
