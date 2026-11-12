@@ -35,6 +35,7 @@ COPY pyproject.toml README.md ./
 COPY src/ ./src/
 COPY configs/ ./configs/
 COPY data/reference_dataset/ ./data/reference_dataset/
+COPY artifacts/weights/ ./artifacts/weights/
 RUN python -m pip install --no-deps --no-build-isolation . \
     && mkdir -p data/forest_vehicles data/visdrone \
        artifacts/weights artifacts/reference_indexes artifacts/cache/ultralytics outputs

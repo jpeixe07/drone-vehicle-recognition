@@ -1,7 +1,8 @@
 # Install the selected CPU or cu128 PyTorch wheels before this file.
 torch==2.9.1
 torchvision==0.24.1
-ultralytics==8.3.232
+# Matches the supplied YOLO26 checkpoint and also supports the YOLOv8 baseline.
+ultralytics==8.4.115
 
 # Shared desktop dependencies; complete transitive locking is future work.
 numpy==1.26.4

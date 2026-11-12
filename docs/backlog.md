@@ -12,8 +12,8 @@
 - [x] Implement seeded reference augmentation with parent-image metadata.
 - [x] Implement offline directory inference and JSON/CSV/image reports.
 - [x] Implement optional rotation inference with coordinate inversion and duplicate merging.
-- [ ] Evaluate detection, model recognition, unknown rejection, and end-to-end results separately.
-- [ ] Exercise the final Roboflow export once its workspace, version, and annotations are available.
+- [x] Evaluate detection, model recognition, and end-to-end results separately; report unknown rejection as unavailable without annotated unknowns.
+- [x] Exercise the final Roboflow export with frozen weights/references and save per-object results.
 - [ ] Pin a complete dependency resolution.
 
 ## Dataset exploration

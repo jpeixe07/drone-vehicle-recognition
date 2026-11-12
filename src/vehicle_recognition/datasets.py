@@ -16,14 +16,17 @@ import yaml
 
 from .configuration import ProjectSettings, read_yaml
 from .reporting import write_json
-from .similarity_efficientnet import backbone_spec, checkpoint_path, checkpoint_sha256, file_sha256
 
 
 def prepare_weights(settings: ProjectSettings, force: bool = False) -> dict:
     from huggingface_hub import HfApi, hf_hub_download
+    from .similarity_efficientnet import backbone_spec, checkpoint_path, checkpoint_sha256, file_sha256
 
     detector = settings.config["detector"]
     target = settings.path(detector["weights"])
+    local = detector.get("source") == "local"
+    if local and not target.is_file():
+        raise FileNotFoundError(f"Copy the configured local detector checkpoint into the repository: {target}")
     manifest_path = target.parent / "manifest.json"
     manifest = json.loads(manifest_path.read_text()) if manifest_path.is_file() else {"schema_version": 1}
     sources = manifest.setdefault("detectors", {})
@@ -31,7 +34,7 @@ def prepare_weights(settings: ProjectSettings, force: bool = False) -> dict:
     if legacy and legacy.get("file"):
         sources.setdefault(legacy["file"], legacy)
     previous = sources.get(target.name, {})
-    if target.is_file() and not force:
+    if target.is_file() and (not force or local):
         if previous.get("source") == "huggingface":
             expected_source = (detector["huggingface_repo"], detector["huggingface_filename"],
                                detector.get("huggingface_revision", "main"))
@@ -141,6 +144,7 @@ def convert_visdrone_split(source: Path, destination: Path, split: str, names: l
 
 def prepare_visdrone(settings: ProjectSettings, splits: list[str] | None = None, force: bool = False) -> dict:
     from ultralytics.utils import ASSETS_URL
+    from .similarity_efficientnet import file_sha256
 
     config = settings.datasets["visdrone"]
     destination = settings.path(config["directory"])
@@ -192,29 +196,95 @@ def dataset_names(config: dict) -> list[str]:
 def prepare_forest(settings: ProjectSettings, force: bool = False) -> dict:
     config = settings.datasets["forest_vehicles"]
     destination = settings.path(config["directory"])
+    workspace = os.environ.get(config["workspace_env"]) or config.get("workspace")
+    revision = os.environ.get(config["version_env"]) or config.get("version")
+    project = os.environ.get("ROBOFLOW_PROJECT") or config["project"]
+    if revision is not None:
+        if isinstance(revision, bool) or not str(revision).isdigit() or int(revision) < 1:
+            raise ValueError("Choose a positive, fixed Roboflow dataset version")
+        revision = int(revision)
+    source = {"workspace": workspace, "project": project, "version": revision,
+              "export_format": config["export_format"]}
+    manifest_path = destination / "manifest.json"
+    manifest = json.loads(manifest_path.read_text()) if manifest_path.is_file() else None
+    if manifest is not None and not force and any(manifest.get(key) != value for key, value in source.items()):
+        raise ValueError("Cached forest dataset source differs from configuration; use --force or a fresh dataset directory")
     if not (destination / "data.yaml").is_file() or force:
-        from roboflow import Roboflow
-
-        workspace = config.get("workspace") or os.environ.get(config["workspace_env"])
-        revision = config.get("version") or os.environ.get(config["version_env"])
         api_key = os.environ.get(config["api_key_env"])
         if not workspace or not revision or not api_key:
-            raise ValueError("Set ROBOFLOW_WORKSPACE, ROBOFLOW_VERSION, and ROBOFLOW_API_KEY, or provide a local export")
-        if int(revision) < 1:
-            raise ValueError("Choose a positive, fixed Roboflow dataset version")
+            raise ValueError("Configure a Roboflow workspace and version and set "
+                             f"{config['api_key_env']} in .env or the environment, or provide a local export")
         if destination.exists() and any(path.name != ".gitkeep" for path in destination.iterdir()) and not force:
             raise ValueError("Forest data directory is nonempty but lacks data.yaml; use a fresh directory or --force")
-        project = os.environ.get("ROBOFLOW_PROJECT") or config["project"]
-        Roboflow(api_key=api_key).workspace(workspace).project(project).version(int(revision)).download(
-            model_format=config["export_format"], location=str(destination), overwrite=force,
-        )
-        write_json(destination / "manifest.json", {"workspace": workspace, "project": project,
-                   "version": int(revision), "export_format": config["export_format"]})
-    names = dataset_names(read_yaml(destination / "data.yaml"))
+        try:
+            from roboflow import Roboflow
+        except ImportError:
+            raise RuntimeError("Install project dependencies with python -m pip install -e .") from None
+
+        # Download separately so failed refreshes preserve the previous export and
+        # successful refreshes cannot retain files from an older version.
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory(dir=destination.parent, prefix=".forest-download-") as temporary:
+            export = Path(temporary) / "export"
+            Roboflow(api_key=api_key).workspace(workspace).project(project).version(revision).download(
+                model_format=config["export_format"], location=str(export), overwrite=True,
+            )
+            _forest_names(settings, export / "data.yaml")
+            _portable_forest_yaml(export / "data.yaml")
+            write_json(export / "manifest.json", source)
+            if (destination / ".gitkeep").is_file():
+                shutil.copyfile(destination / ".gitkeep", export / ".gitkeep")
+            previous = Path(temporary) / "previous"
+            if destination.exists():
+                destination.rename(previous)
+            try:
+                export.rename(destination)
+            except OSError:
+                if previous.exists():
+                    previous.rename(destination)
+                raise
+    names = _forest_names(settings, destination / "data.yaml")
+    # Migrate cached exports too, without another download or credentials.
+    _portable_forest_yaml(destination / "data.yaml")
+    return {"directory": str(destination), "data_yaml": str(destination / "data.yaml"),
+            "names": names, "role": config["role"], "source": source if manifest_path.is_file() else None}
+
+
+def _portable_forest_yaml(path: Path) -> None:
+    dataset = read_yaml(path)
+    original = dict(dataset)
+    previous_root = Path(dataset.get("path") or path.parent)
+    for split in ("train", "val", "test"):
+        if not dataset.get(split):
+            continue
+        values = dataset[split] if isinstance(dataset[split], list) else [dataset[split]]
+        portable = []
+        for value in values:
+            source = Path(value)
+            if source.is_absolute():
+                for root in (path.parent, previous_root):
+                    if root.is_absolute() and source.is_relative_to(root):
+                        source = source.relative_to(root)
+                        break
+            if source.parts[:1] == ("..",):
+                local = Path(*source.parts[1:])
+                if (path.parent / local).exists():
+                    source = local
+            portable.append(str(source))
+        dataset[split] = portable if isinstance(dataset[split], list) else portable[0]
+    # Ultralytics resolves missing `path` relative to the YAML itself. `path: .`
+    # would instead resolve against its global datasets directory.
+    dataset.pop("path", None)
+    if dataset != original:
+        path.write_text(yaml.safe_dump(dataset, sort_keys=False), encoding="utf-8")
+
+
+def _forest_names(settings: ProjectSettings, path: Path) -> list[str]:
+    names = dataset_names(read_yaml(path))
     invalid = set(names) - set(settings.labels) - {settings.config["recognition"]["unknown_label"]}
     if invalid:
         raise ValueError(f"Roboflow labels do not match the recognition catalog: {', '.join(sorted(invalid))}")
-    return {"directory": str(destination), "names": names, "role": "final_evaluation"}
+    return names
 
 
 def prepare_assets(settings: ProjectSettings, include_visdrone: bool = False, include_forest: bool = False,

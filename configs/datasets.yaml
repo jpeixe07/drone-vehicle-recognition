@@ -3,8 +3,8 @@ schema_version: 1
 forest_vehicles:
   provider: roboflow
   project: drone-forest-vehicles
-  workspace: null  # Supplied through ROBOFLOW_WORKSPACE.
-  version: null    # Supplied through ROBOFLOW_VERSION; select a fixed version.
+  workspace: drones-88u87
+  version: 1  # Fixed export for reproducible evaluation; environment overrides are supported.
   workspace_env: ROBOFLOW_WORKSPACE
   version_env: ROBOFLOW_VERSION
   api_key_env: ROBOFLOW_API_KEY

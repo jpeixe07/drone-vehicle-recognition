@@ -2,7 +2,7 @@
 
 Offline recognition of specific operational vehicle models in aerial images using pretrained YOLO detection, EfficientNet-B3 visual embeddings, and a labeled reference gallery.
 
-**Status:** the first offline pipeline is implemented: model preparation, reference indexing, crop collection, reference augmentation, image/crop recognition, and experiment reports. Quantitative evaluation against the annotated forest dataset remains planned.
+**Status:** model preparation, reference indexing, crop collection, reference augmentation, image/crop recognition, experiment reports, and annotated forest evaluation are implemented.
 
 ## Context and problem definition
 
@@ -106,7 +106,7 @@ The reference index stores each image's embedding and a fingerprint of the galle
 │   ├── forest_vehicles/             # Ignored Roboflow export
 │   └── visdrone/                    # Ignored optional public dataset
 ├── artifacts/
-│   ├── weights/                     # Ignored downloaded model weights
+│   ├── weights/                     # Versioned YOLOv8 and YOLO26 detector checkpoints
 │   ├── reference_indexes/           # Ignored generated gallery embeddings
 │   └── cache/                       # Ignored persistent download caches
 └── outputs/<run_id>/                # Ignored experiment results
@@ -118,7 +118,7 @@ The recognition catalog and detector taxonomy are separate. `classes.yaml` defin
 
 ### Desktop environment
 
-The target is Linux x86-64 with Python 3.10 and either CPU execution or NVIDIA CUDA. The core version baseline matches the inspected desktop environment: **PyTorch 2.9.1, torchvision 0.24.1, and Ultralytics 8.3.232**. The same application supports both backends. The remaining dependencies have bounded versions; `requirements.txt` is not a complete transitive lockfile.
+The target is Linux x86-64 with Python 3.10 and either CPU execution or NVIDIA CUDA. The core versions are **PyTorch 2.9.1, torchvision 0.24.1, and Ultralytics 8.4.115**. Ultralytics matches the supplied YOLO26 checkpoint; the original YOLOv8 evaluation used 8.3.232, and comparison runs record their own runtime versions. The same application supports both backends. The remaining dependencies have bounded versions; `requirements.txt` is not a complete transitive lockfile.
 
 Docker installs its own virtual environment at `/opt/venv`. The host Python environment is not copied into the image. The GPU build uses the pinned PyPI PyTorch 2.9.1 release for Linux x86-64, which supplies CUDA 12.8, and checks the compiled CUDA version during the build. The CPU build uses the official CPU wheel index. NVIDIA drivers and NVIDIA Container Toolkit remain host requirements. An RTX 4050 with 6 GB VRAM and driver 570.211.01 is the initial hardware baseline, not a minimum GPU specification. See the [official PyTorch installation matrix](https://pytorch.org/get-started/previous-versions/).
 
@@ -172,9 +172,31 @@ Copy the environment template when using Roboflow:
 cp .env.example .env
 ```
 
-Set `ROBOFLOW_WORKSPACE`, `ROBOFLOW_VERSION`, and `ROBOFLOW_API_KEY` locally. `ROBOFLOW_PROJECT` is already `drone-forest-vehicles`. The workspace and dataset version are intentionally unset. Keep credentials in the ignored `.env` file. See the [Roboflow dataset download documentation](https://docs.roboflow.com/datasets/create-and-upload/download-a-dataset.md).
+Set `ROBOFLOW_API_KEY` in the ignored `.env` file using your private Roboflow key. Never put a real key in Python code, notebooks, `.env.example`, or Git. Regenerate any key that has been exposed in shared snippets before using it.
 
-Dataset exports, model weights, indexes, and results stay outside Git history. The small reference gallery is included so it can be reviewed and replaced. Large ZIP archives are excluded from Git and the Docker build context.
+The configured source is workspace **`drones-88u87`**, project **`drone-forest-vehicles`**, fixed version **`1`**, exported as **YOLOv8**. These non-secret defaults live in `configs/datasets.yaml`. Optional `ROBOFLOW_WORKSPACE`, `ROBOFLOW_PROJECT`, and `ROBOFLOW_VERSION` values in `.env` or the environment override those defaults; an existing shell variable takes precedence over `.env`. See the [Roboflow Python download reference](https://roboflow.github.io/roboflow-python/core/version/#roboflow.core.version.Version.download).
+
+From an installed project environment, download only this dataset:
+
+```bash
+python -m vehicle_recognition download-dataset forest
+# Equivalent installed entry point:
+aerial-vehicles download-dataset forest
+```
+
+The export is saved to `data/forest_vehicles/`, with `data.yaml` for its image splits and class names and `manifest.json` for its workspace, project, version, and format. No model weights are downloaded. Repeating the command reuses the local export without requiring a key or network access. A cached source mismatch fails explicitly; use `--force` to replace it after changing versions. Refreshes download and validate separately before replacing the previous export. Export label order is preserved, and names must match `configs/classes.yaml` (or `unknown`).
+
+For Docker, use the same command through the image entry point:
+
+```bash
+docker run --rm --env-file .env \
+  -v "$PWD/data:/app/data" \
+  aerial-vehicles:cpu download-dataset forest
+```
+
+You can also put an existing YOLOv8 export in `data/forest_vehicles/` and run the command without credentials to check its class names. A manually supplied export without a manifest has no verified Roboflow source identity.
+
+The two detector checkpoints in `artifacts/weights/` and the small reference gallery are included in Git and the Docker image. Checkpoint hashes and sources are documented in `artifacts/weights/README.md`. Dataset exports, pretrained extractor caches, generated weight manifests, indexes, and results stay outside Git history. Large ZIP archives are excluded from Git and the Docker build context.
 
 Persist local assets when running the container:
 
@@ -188,6 +210,21 @@ docker run --rm --env-file .env \
 ```
 
 Reuse these mounts for `index`, `predict`, and the other commands below. Running with your UID/GID keeps generated files owned by your local account. Use `--gpus all` and the CUDA image for GPU execution. Preparation and augmentation write data; inference can mount its input dataset read-only.
+
+For a complete Docker reproduction, including image build, dataset download or reuse, weight preparation, reference indexing, and evaluation of every exported image:
+
+```bash
+# YOLO26, CPU; uses the key in .env only if the dataset needs downloading.
+bash scripts/evaluate-docker.sh cpu
+
+# YOLO26, NVIDIA CUDA 12.8.
+bash scripts/evaluate-docker.sh cu128
+
+# Repeat with the original YOLOv8 detector.
+bash scripts/evaluate-docker.sh cpu configs/default.yaml
+```
+
+The script mounts `data`, `artifacts`, and `outputs` from the checkout, preserves your UID/GID, and mounts the dataset read-only for evaluation. Each run creates a new directory under `outputs/`. New exports omit the absolute dataset root, so image splits resolve relative to `data.yaml`. Running `download-dataset forest` also migrates cached exports without downloading again. Evaluation accepts legacy absolute roots that are unavailable inside the container, so existing data can be mounted at `/app/data` without exposing its original host path.
 
 ### Running an experiment
 
@@ -206,6 +243,7 @@ Model downloads are explicit: `index` and `predict` use cached weights and do no
 | Operation | Purpose |
 | --- | --- |
 | `prepare` | Cache the YOLO and official EfficientNet-B3 weights |
+| `download-dataset forest` | Fetch or validate the pinned Roboflow export without model downloads |
 | `prepare --include-forest` | Also fetch or inspect a local Roboflow export and check its class names |
 | `prepare --include-visdrone` | Also download and convert VisDrone for exploratory analysis |
 | `collect-crops --input <images>` | Export unlabeled vehicle crops for manual reference selection |
@@ -214,7 +252,7 @@ Model downloads are explicit: `index` and `predict` use cached weights and do no
 | `predict --input <images>` | Run YOLO and similarity recognition on offline images |
 | `predict --input <crops> --crops` | Recognize already-cropped vehicles without running YOLO |
 | `predict --groups <manifest.json>` | Combine explicitly associated crops for each vehicle |
-| `evaluate` | Planned: quantify results against the annotated final dataset |
+| `evaluate --device cuda --splits all` | Evaluate detection, crop similarity, and the complete pipeline against all forest annotations |
 
 Useful experiment options:
 
@@ -237,7 +275,31 @@ A crop-group manifest is a JSON object such as `{"vehicle_01": ["crops/view_01.j
 
 Each run writes `run.json`, `predictions.json`, `predictions.jsonl`, `predictions.csv`, `summary.json`, and optional annotated images. Empty detections and rejected matches remain in the results. Image decoding failures are recorded, and an incomplete run returns a nonzero exit code. Metadata includes the resolved configuration, package versions, source-code fingerprint, detector checksum and source revision when prepared, and gallery/extractor identity. Cosine similarities and detection confidences are stored separately.
 
-The real forest dataset is reserved for final evaluation; the initial gallery is generated in simulation. Gallery examples and threshold calibration must remain independent of the final evaluation data. Quantitative metrics for missed detections, model confusions, and incorrect acceptance of unknown vehicles remain planned until the annotated evaluation workflow is implemented.
+The real forest dataset is reserved for final evaluation; the initial gallery is generated in simulation. Gallery examples and threshold calibration must remain independent of the final evaluation data.
+
+Run the full annotated evaluation from an installed environment with GPU access:
+
+```bash
+python -m vehicle_recognition download-dataset forest
+python -m vehicle_recognition prepare --device cuda
+python -m vehicle_recognition index --device cuda
+python -m vehicle_recognition evaluate --device cuda --splits all --output outputs/forest_validation_cuda_v1
+```
+
+`--splits all` evaluates every image in the exported train/val/test directories as final evaluation data; it does not train the network. Roboflow may include a YAML entry for an empty split without exporting its directory; the command reports and skips that missing directory. Explicitly requesting a missing split fails. Existing outputs are never overwritten; choose a new directory for another run.
+
+The evaluator preserves the configured detector, 83-image gallery, EfficientNet-B3 weights, similarity threshold, and rotations. It reports three separate results in `metrics.json`: classification on annotation-defined crops, class-agnostic detection precision/recall/F1 at IoU 0.50, and detection plus correct fine-grained recognition. It also measures classification on matched detections. Rejected known vehicles count as recognition errors; raw top-1 accuracy before rejection and accuracy among accepted predictions are reported separately. An unsupported class has null accuracy, and unknown rejection recall is null when no unknown objects are annotated. No background-based classification accuracy or mAP is implied by these metrics.
+
+Artifacts include `run.json` with weights/configuration identity, `dataset_inventory.json` with image and annotation hashes, all full-pipeline predictions and annotated images, `gt_crops/predictions.json` for crop predictions, and `objects.csv` with correct, missed, misclassified/rejected, and unmatched detections. Confusion matrices and per-class counts are stored for later plotting. Exact duplicate image hashes are counted and reported; all exported images are evaluated. Evaluation images identical to gallery references are rejected.
+
+The included YOLO26s MVRSD/VIS checkpoint uses one broad `vehicle` class. Select `configs/yolo26s_mvrsd_vis.yaml` to use it. This configuration keeps the gallery, similarity threshold, detector confidence, image size, crop margin, and evaluation protocol identical to the default. Preparation checks the local checkpoint and does not download a replacement for it. The checkpoint is versioned in Git; the generated local `manifest.json` records preparation metadata.
+
+```bash
+python -m vehicle_recognition prepare --config configs/yolo26s_mvrsd_vis.yaml --device cuda
+python -m vehicle_recognition evaluate --config configs/yolo26s_mvrsd_vis.yaml --device cuda --splits all --output outputs/forest_validation_yolo26s_cuda_v1
+```
+
+Ultralytics loads the checkpoint through the standard `YOLO()` API and handles the checkpoint's end-to-end detection head. See the [official YOLO26 documentation](https://docs.ultralytics.com/models/yolo26/). The frozen EfficientNet reference index can be shared across detector comparisons.
 
 VisDrone download is optional and disabled by default. It will support exploratory analysis of class frequencies, bounding-box sizes, and example scenes for presentation figures. Its broad detection labels are distinct from the five-model recognition catalog. See the [VisDrone dataset and download configuration](https://docs.ultralytics.com/datasets/detect/visdrone/).
 

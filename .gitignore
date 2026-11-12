@@ -19,18 +19,16 @@ build/
 dist/
 .ipynb_checkpoints/
 
-# Large/generated assets; retain the small reference gallery
+# Generated assets; detector checkpoints and the reference gallery are versioned
 *.zip
-*.pt
-*.pth
-*.onnx
 data/forest_vehicles/*
 !data/forest_vehicles/.gitkeep
+data/.forest-download-*/
 data/visdrone/*
 !data/visdrone/.gitkeep
 data/reference_dataset_augmented/
-artifacts/weights/*
-!artifacts/weights/.gitkeep
+# Generated preparation metadata contains machine-specific cache paths.
+artifacts/weights/manifest.json
 artifacts/reference_indexes/*
 !artifacts/reference_indexes/.gitkeep
 artifacts/cache/*
