@@ -2,7 +2,7 @@
 
 Offline recognition of specific operational vehicle models in aerial images using pretrained YOLO detection, EfficientNet-B3 visual embeddings, and a labeled reference gallery.
 
-**Status:** the first offline pipeline is implemented: model preparation, reference indexing, crop collection, reference augmentation, image/crop recognition, and experiment reports. Quantitative evaluation against the annotated forest dataset remains planned.
+**Status:** model preparation, reference indexing, crop collection, reference augmentation, image/crop recognition, experiment reports, and annotated forest evaluation are implemented.
 
 ## Context and problem definition
 
@@ -237,7 +237,7 @@ Model downloads are explicit: `index` and `predict` use cached weights and do no
 | `predict --input <images>` | Run YOLO and similarity recognition on offline images |
 | `predict --input <crops> --crops` | Recognize already-cropped vehicles without running YOLO |
 | `predict --groups <manifest.json>` | Combine explicitly associated crops for each vehicle |
-| `evaluate` | Planned: quantify results against the annotated final dataset |
+| `evaluate --device cuda --splits all` | Evaluate detection, crop similarity, and the complete pipeline against all forest annotations |
 
 Useful experiment options:
 
@@ -260,7 +260,22 @@ A crop-group manifest is a JSON object such as `{"vehicle_01": ["crops/view_01.j
 
 Each run writes `run.json`, `predictions.json`, `predictions.jsonl`, `predictions.csv`, `summary.json`, and optional annotated images. Empty detections and rejected matches remain in the results. Image decoding failures are recorded, and an incomplete run returns a nonzero exit code. Metadata includes the resolved configuration, package versions, source-code fingerprint, detector checksum and source revision when prepared, and gallery/extractor identity. Cosine similarities and detection confidences are stored separately.
 
-The real forest dataset is reserved for final evaluation; the initial gallery is generated in simulation. Gallery examples and threshold calibration must remain independent of the final evaluation data. Quantitative metrics for missed detections, model confusions, and incorrect acceptance of unknown vehicles remain planned until the annotated evaluation workflow is implemented.
+The real forest dataset is reserved for final evaluation; the initial gallery is generated in simulation. Gallery examples and threshold calibration must remain independent of the final evaluation data.
+
+Run the full annotated evaluation from an installed environment with GPU access:
+
+```bash
+python -m vehicle_recognition download-dataset forest
+python -m vehicle_recognition prepare --device cuda
+python -m vehicle_recognition index --device cuda
+python -m vehicle_recognition evaluate --device cuda --splits all --output outputs/forest_validation_cuda_v1
+```
+
+`--splits all` evaluates every image in the exported train/val/test directories as final evaluation data; it does not train the network. Roboflow may include a YAML entry for an empty split without exporting its directory; the command reports and skips that missing directory. Explicitly requesting a missing split fails. Existing outputs are never overwritten; choose a new directory for another run.
+
+The evaluator preserves the configured detector, 83-image gallery, EfficientNet-B3 weights, similarity threshold, and rotations. It reports three separate results in `metrics.json`: classification on annotation-defined crops, class-agnostic detection precision/recall/F1 at IoU 0.50, and detection plus correct fine-grained recognition. It also measures classification on matched detections. Rejected known vehicles count as recognition errors; raw top-1 accuracy before rejection and accuracy among accepted predictions are reported separately. An unsupported class has null accuracy, and unknown rejection recall is null when no unknown objects are annotated. No background-based classification accuracy or mAP is implied by these metrics.
+
+Artifacts include `run.json` with weights/configuration identity, `dataset_inventory.json` with image and annotation hashes, all full-pipeline predictions and annotated images, `gt_crops/predictions.json` for crop predictions, and `objects.csv` with correct, missed, misclassified/rejected, and unmatched detections. Confusion matrices and per-class counts are stored for later plotting. Exact duplicate image hashes are counted and reported; all exported images are evaluated. Evaluation images identical to gallery references are rejected.
 
 VisDrone download is optional and disabled by default. It will support exploratory analysis of class frequencies, bounding-box sizes, and example scenes for presentation figures. Its broad detection labels are distinct from the five-model recognition catalog. See the [VisDrone dataset and download configuration](https://docs.ultralytics.com/datasets/detect/visdrone/).
 

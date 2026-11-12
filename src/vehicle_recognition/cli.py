@@ -11,7 +11,7 @@ import sys
 
 from .configuration import FEATURE_DIMENSIONS, IMAGE_SUFFIXES, configure_environment, load_settings
 
-IMPLEMENTED_COMMANDS = ["status", "prepare", "download-dataset", "index", "predict", "collect-crops", "augment-references"]
+IMPLEMENTED_COMMANDS = ["status", "prepare", "download-dataset", "index", "predict", "evaluate", "collect-crops", "augment-references"]
 
 
 def inspect_project(settings, check_runtime: bool = False) -> dict:
@@ -29,7 +29,7 @@ def inspect_project(settings, check_runtime: bool = False) -> dict:
     forest = settings.datasets["forest_vehicles"]
     result = {
         "stage": "offline_pipeline", "implemented_commands": IMPLEMENTED_COMMANDS,
-        "planned_commands": ["evaluate"], "device": settings.config["device"],
+        "planned_commands": [], "device": settings.config["device"],
         "extractor": settings.config["recognition"]["backbone"],
         "checkpoint": settings.config["recognition"]["weights"],
         "reference_images": counts, "reference_total": sum(counts.values()),
@@ -77,6 +77,11 @@ def create_parser() -> argparse.ArgumentParser:
     download = commands.add_parser("download-dataset", parents=[common], help="Download a dataset without model weights")
     download.add_argument("dataset", choices=["forest"], help="Configured Roboflow forest dataset")
     download.add_argument("--force", action="store_true", help="Replace the local export with a fresh download")
+
+    evaluate = commands.add_parser("evaluate", parents=[common], help="Evaluate frozen detection and similarity against forest annotations")
+    evaluate.add_argument("--splits", nargs="+", choices=["all", "train", "val", "test"], default=["all"])
+    evaluate.add_argument("--iou", type=float, default=0.5, help="Minimum IoU for one-to-one localization matches")
+    evaluate.add_argument("--output", type=Path, help="Empty/new directory for metrics and predictions")
 
     index = commands.add_parser("index", parents=[common], help="Build a fingerprinted reference-embedding index")
     index.add_argument("--backbone", choices=sorted(FEATURE_DIMENSIONS))
@@ -154,6 +159,10 @@ def dispatch(args) -> dict:
         from .datasets import prepare_assets
 
         return prepare_assets(settings, args.include_visdrone, args.include_forest, args.visdrone_splits, args.force)
+    if args.command == "evaluate":
+        from .evaluation import run_evaluation
+
+        return run_evaluation(settings, args.splits, args.iou, settings.path(args.output) if args.output else None)
     if args.command == "index":
         from .pipeline import build_index
 
