@@ -211,6 +211,21 @@ docker run --rm --env-file .env \
 
 Reuse these mounts for `index`, `predict`, and the other commands below. Running with your UID/GID keeps generated files owned by your local account. Use `--gpus all` and the CUDA image for GPU execution. Preparation and augmentation write data; inference can mount its input dataset read-only.
 
+For a complete Docker reproduction, including image build, dataset download or reuse, weight preparation, reference indexing, and evaluation of every exported image:
+
+```bash
+# YOLO26, CPU; uses the key in .env only if the dataset needs downloading.
+bash scripts/evaluate-docker.sh cpu
+
+# YOLO26, NVIDIA CUDA 12.8.
+bash scripts/evaluate-docker.sh cu128
+
+# Repeat with the original YOLOv8 detector.
+bash scripts/evaluate-docker.sh cpu configs/default.yaml
+```
+
+The script mounts `data`, `artifacts`, and `outputs` from the checkout, preserves your UID/GID, and mounts the dataset read-only for evaluation. Each run creates a new directory under `outputs/`. New exports omit the absolute dataset root, so image splits resolve relative to `data.yaml`. Running `download-dataset forest` also migrates cached exports without downloading again. Evaluation accepts legacy absolute roots that are unavailable inside the container, so existing data can be mounted at `/app/data` without exposing its original host path.
+
 ### Running an experiment
 
 From an installed local environment, run:
