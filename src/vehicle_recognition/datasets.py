@@ -24,6 +24,9 @@ def prepare_weights(settings: ProjectSettings, force: bool = False) -> dict:
 
     detector = settings.config["detector"]
     target = settings.path(detector["weights"])
+    local = detector.get("source") == "local"
+    if local and not target.is_file():
+        raise FileNotFoundError(f"Copy the configured local detector checkpoint into the repository: {target}")
     manifest_path = target.parent / "manifest.json"
     manifest = json.loads(manifest_path.read_text()) if manifest_path.is_file() else {"schema_version": 1}
     sources = manifest.setdefault("detectors", {})
@@ -31,7 +34,7 @@ def prepare_weights(settings: ProjectSettings, force: bool = False) -> dict:
     if legacy and legacy.get("file"):
         sources.setdefault(legacy["file"], legacy)
     previous = sources.get(target.name, {})
-    if target.is_file() and not force:
+    if target.is_file() and (not force or local):
         if previous.get("source") == "huggingface":
             expected_source = (detector["huggingface_repo"], detector["huggingface_filename"],
                                detector.get("huggingface_revision", "main"))

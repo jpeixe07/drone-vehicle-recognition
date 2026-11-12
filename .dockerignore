@@ -14,7 +14,9 @@ data/forest_vehicles
 data/.forest-download-*
 data/visdrone
 data/reference_dataset_augmented
-artifacts
+artifacts/*
+!artifacts/weights/
+artifacts/weights/manifest.json
 outputs
 notebooks
 build

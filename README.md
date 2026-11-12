@@ -106,7 +106,7 @@ The reference index stores each image's embedding and a fingerprint of the galle
 │   ├── forest_vehicles/             # Ignored Roboflow export
 │   └── visdrone/                    # Ignored optional public dataset
 ├── artifacts/
-│   ├── weights/                     # Ignored downloaded model weights
+│   ├── weights/                     # Versioned YOLOv8 and YOLO26 detector checkpoints
 │   ├── reference_indexes/           # Ignored generated gallery embeddings
 │   └── cache/                       # Ignored persistent download caches
 └── outputs/<run_id>/                # Ignored experiment results
@@ -118,7 +118,7 @@ The recognition catalog and detector taxonomy are separate. `classes.yaml` defin
 
 ### Desktop environment
 
-The target is Linux x86-64 with Python 3.10 and either CPU execution or NVIDIA CUDA. The core version baseline matches the inspected desktop environment: **PyTorch 2.9.1, torchvision 0.24.1, and Ultralytics 8.3.232**. The same application supports both backends. The remaining dependencies have bounded versions; `requirements.txt` is not a complete transitive lockfile.
+The target is Linux x86-64 with Python 3.10 and either CPU execution or NVIDIA CUDA. The core versions are **PyTorch 2.9.1, torchvision 0.24.1, and Ultralytics 8.4.115**. Ultralytics matches the supplied YOLO26 checkpoint; the original YOLOv8 evaluation used 8.3.232, and comparison runs record their own runtime versions. The same application supports both backends. The remaining dependencies have bounded versions; `requirements.txt` is not a complete transitive lockfile.
 
 Docker installs its own virtual environment at `/opt/venv`. The host Python environment is not copied into the image. The GPU build uses the pinned PyPI PyTorch 2.9.1 release for Linux x86-64, which supplies CUDA 12.8, and checks the compiled CUDA version during the build. The CPU build uses the official CPU wheel index. NVIDIA drivers and NVIDIA Container Toolkit remain host requirements. An RTX 4050 with 6 GB VRAM and driver 570.211.01 is the initial hardware baseline, not a minimum GPU specification. See the [official PyTorch installation matrix](https://pytorch.org/get-started/previous-versions/).
 
@@ -196,7 +196,7 @@ docker run --rm --env-file .env \
 
 You can also put an existing YOLOv8 export in `data/forest_vehicles/` and run the command without credentials to check its class names. A manually supplied export without a manifest has no verified Roboflow source identity.
 
-Dataset exports, model weights, indexes, and results stay outside Git history. The small reference gallery is included so it can be reviewed and replaced. Large ZIP archives are excluded from Git and the Docker build context.
+The two detector checkpoints in `artifacts/weights/` and the small reference gallery are included in Git and the Docker image. Checkpoint hashes and sources are documented in `artifacts/weights/README.md`. Dataset exports, pretrained extractor caches, generated weight manifests, indexes, and results stay outside Git history. Large ZIP archives are excluded from Git and the Docker build context.
 
 Persist local assets when running the container:
 
@@ -276,6 +276,15 @@ python -m vehicle_recognition evaluate --device cuda --splits all --output outpu
 The evaluator preserves the configured detector, 83-image gallery, EfficientNet-B3 weights, similarity threshold, and rotations. It reports three separate results in `metrics.json`: classification on annotation-defined crops, class-agnostic detection precision/recall/F1 at IoU 0.50, and detection plus correct fine-grained recognition. It also measures classification on matched detections. Rejected known vehicles count as recognition errors; raw top-1 accuracy before rejection and accuracy among accepted predictions are reported separately. An unsupported class has null accuracy, and unknown rejection recall is null when no unknown objects are annotated. No background-based classification accuracy or mAP is implied by these metrics.
 
 Artifacts include `run.json` with weights/configuration identity, `dataset_inventory.json` with image and annotation hashes, all full-pipeline predictions and annotated images, `gt_crops/predictions.json` for crop predictions, and `objects.csv` with correct, missed, misclassified/rejected, and unmatched detections. Confusion matrices and per-class counts are stored for later plotting. Exact duplicate image hashes are counted and reported; all exported images are evaluated. Evaluation images identical to gallery references are rejected.
+
+The included YOLO26s MVRSD/VIS checkpoint uses one broad `vehicle` class. Select `configs/yolo26s_mvrsd_vis.yaml` to use it. This configuration keeps the gallery, similarity threshold, detector confidence, image size, crop margin, and evaluation protocol identical to the default. Preparation checks the local checkpoint and does not download a replacement for it. The checkpoint is versioned in Git; the generated local `manifest.json` records preparation metadata.
+
+```bash
+python -m vehicle_recognition prepare --config configs/yolo26s_mvrsd_vis.yaml --device cuda
+python -m vehicle_recognition evaluate --config configs/yolo26s_mvrsd_vis.yaml --device cuda --splits all --output outputs/forest_validation_yolo26s_cuda_v1
+```
+
+Ultralytics loads the checkpoint through the standard `YOLO()` API and handles the checkpoint's end-to-end detection head. See the [official YOLO26 documentation](https://docs.ultralytics.com/models/yolo26/). The frozen EfficientNet reference index can be shared across detector comparisons.
 
 VisDrone download is optional and disabled by default. It will support exploratory analysis of class frequencies, bounding-box sizes, and example scenes for presentation figures. Its broad detection labels are distinct from the five-model recognition catalog. See the [VisDrone dataset and download configuration](https://docs.ultralytics.com/datasets/detect/visdrone/).
 
