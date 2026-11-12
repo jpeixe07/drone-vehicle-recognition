@@ -317,3 +317,26 @@ These tests use synthetic embeddings, boxes, and small image fixtures. They do n
 ## Planned extensions
 
 Training a detector on DroneVehicle is future work. It will provide a second detector for experiments using the same similarity-recognition stage. The current scaffold neither downloads DroneVehicle nor trains a detector. Additional implementation tasks are tracked in [docs/backlog.md](docs/backlog.md).
+
+## Sobrevoo local web interface
+
+After installing the project dependencies, prepare the weights and index from the
+repository root, then start the local server:
+
+```bash
+python -m vehicle_recognition prepare --device cpu
+python -m vehicle_recognition index --device cpu
+python -m vehicle_recognition.server --port 8000
+```
+
+Open http://127.0.0.1:8000. The server serves the frontend and accepts
+`POST /api/predict` with the image bytes as the request body (maximum 20 MiB).
+The JSON response has the same `schema_version` and `images` structure as
+`predictions.json`, plus `acceptance_threshold`. Invalid images return 400,
+oversized or empty bodies return 413, and inference failures return 503.
+Requests run serially and each uses an isolated temporary output directory,
+removed after the response data is collected. This local server loads the
+pipeline per request. It binds to loopback and is intended for local review.
+
+The page shows only results from the uploaded image, uses backend acceptance
+decisions, and keeps detection confidence separate from cosine similarity.
