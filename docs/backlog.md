@@ -18,8 +18,8 @@
 
 ## Dataset exploration
 
-- [ ] Add VisDrone class/box-size distributions and example scenes.
-- [ ] Generate presentation figures from saved, reproducible analysis runs.
+- [x] Add VisDrone class/box-size distributions and example scenes.
+- [x] Generate presentation figures from saved, reproducible analysis runs.
 
 ## Future detector experiments
 
