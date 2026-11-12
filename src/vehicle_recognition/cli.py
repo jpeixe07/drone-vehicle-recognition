@@ -11,7 +11,7 @@ import sys
 
 from .configuration import FEATURE_DIMENSIONS, IMAGE_SUFFIXES, configure_environment, load_settings
 
-IMPLEMENTED_COMMANDS = ["status", "prepare", "index", "predict", "collect-crops", "augment-references"]
+IMPLEMENTED_COMMANDS = ["status", "prepare", "download-dataset", "index", "predict", "collect-crops", "augment-references"]
 
 
 def inspect_project(settings, check_runtime: bool = False) -> dict:
@@ -36,6 +36,9 @@ def inspect_project(settings, check_runtime: bool = False) -> dict:
         "index_present": settings.index.is_file(),
         "detector_weights_present": settings.path(settings.config["detector"]["weights"]).is_file(),
         "roboflow_project": os.environ.get("ROBOFLOW_PROJECT") or forest["project"],
+        "roboflow_workspace": os.environ.get(forest["workspace_env"]) or forest["workspace"],
+        "roboflow_version": os.environ.get(forest["version_env"]) or forest["version"],
+        "forest_dataset_present": (settings.path(forest["directory"]) / "data.yaml").is_file(),
         "roboflow_workspace_required": not bool(forest["workspace"] or os.environ.get(forest["workspace_env"])),
         "roboflow_version_required": not bool(forest["version"] or os.environ.get(forest["version_env"])),
         "visdrone_download_by_default": settings.datasets["visdrone"]["download_by_default"],
@@ -70,6 +73,10 @@ def create_parser() -> argparse.ArgumentParser:
     prepare.add_argument("--include-forest", action="store_true", help="Also fetch the configured Roboflow export")
     prepare.add_argument("--visdrone-splits", nargs="+", choices=["train", "val", "test"], default=["train", "val", "test"])
     prepare.add_argument("--force", action="store_true", help="Refresh detector weights or reprepare selected datasets")
+
+    download = commands.add_parser("download-dataset", parents=[common], help="Download a dataset without model weights")
+    download.add_argument("dataset", choices=["forest"], help="Configured Roboflow forest dataset")
+    download.add_argument("--force", action="store_true", help="Replace the local export with a fresh download")
 
     index = commands.add_parser("index", parents=[common], help="Build a fingerprinted reference-embedding index")
     index.add_argument("--backbone", choices=sorted(FEATURE_DIMENSIONS))
@@ -133,6 +140,10 @@ def dispatch(args) -> dict:
         settings.config["inference"]["rotations_degrees"] = args.rotations
     if args.command == "status":
         return inspect_project(settings, args.check_runtime)
+    if args.command == "download-dataset":
+        from .datasets import prepare_forest
+
+        return prepare_forest(settings, args.force)
     configure_environment(settings.root)
     import torch
 

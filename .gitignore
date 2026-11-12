@@ -26,6 +26,7 @@ dist/
 *.onnx
 data/forest_vehicles/*
 !data/forest_vehicles/.gitkeep
+data/.forest-download-*/
 data/visdrone/*
 !data/visdrone/.gitkeep
 data/reference_dataset_augmented/

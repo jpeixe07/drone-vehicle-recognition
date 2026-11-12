@@ -172,7 +172,29 @@ Copy the environment template when using Roboflow:
 cp .env.example .env
 ```
 
-Set `ROBOFLOW_WORKSPACE`, `ROBOFLOW_VERSION`, and `ROBOFLOW_API_KEY` locally. `ROBOFLOW_PROJECT` is already `drone-forest-vehicles`. The workspace and dataset version are intentionally unset. Keep credentials in the ignored `.env` file. See the [Roboflow dataset download documentation](https://docs.roboflow.com/datasets/create-and-upload/download-a-dataset.md).
+Set `ROBOFLOW_API_KEY` in the ignored `.env` file using your private Roboflow key. Never put a real key in Python code, notebooks, `.env.example`, or Git. Regenerate any key that has been exposed in shared snippets before using it.
+
+The configured source is workspace **`drones-88u87`**, project **`drone-forest-vehicles`**, fixed version **`1`**, exported as **YOLOv8**. These non-secret defaults live in `configs/datasets.yaml`. Optional `ROBOFLOW_WORKSPACE`, `ROBOFLOW_PROJECT`, and `ROBOFLOW_VERSION` values in `.env` or the environment override those defaults; an existing shell variable takes precedence over `.env`. See the [Roboflow Python download reference](https://roboflow.github.io/roboflow-python/core/version/#roboflow.core.version.Version.download).
+
+From an installed project environment, download only this dataset:
+
+```bash
+python -m vehicle_recognition download-dataset forest
+# Equivalent installed entry point:
+aerial-vehicles download-dataset forest
+```
+
+The export is saved to `data/forest_vehicles/`, with `data.yaml` for its image splits and class names and `manifest.json` for its workspace, project, version, and format. No model weights are downloaded. Repeating the command reuses the local export without requiring a key or network access. A cached source mismatch fails explicitly; use `--force` to replace it after changing versions. Refreshes download and validate separately before replacing the previous export. Export label order is preserved, and names must match `configs/classes.yaml` (or `unknown`).
+
+For Docker, use the same command through the image entry point:
+
+```bash
+docker run --rm --env-file .env \
+  -v "$PWD/data:/app/data" \
+  aerial-vehicles:cpu download-dataset forest
+```
+
+You can also put an existing YOLOv8 export in `data/forest_vehicles/` and run the command without credentials to check its class names. A manually supplied export without a manifest has no verified Roboflow source identity.
 
 Dataset exports, model weights, indexes, and results stay outside Git history. The small reference gallery is included so it can be reviewed and replaced. Large ZIP archives are excluded from Git and the Docker build context.
 
@@ -206,6 +228,7 @@ Model downloads are explicit: `index` and `predict` use cached weights and do no
 | Operation | Purpose |
 | --- | --- |
 | `prepare` | Cache the YOLO and official EfficientNet-B3 weights |
+| `download-dataset forest` | Fetch or validate the pinned Roboflow export without model downloads |
 | `prepare --include-forest` | Also fetch or inspect a local Roboflow export and check its class names |
 | `prepare --include-visdrone` | Also download and convert VisDrone for exploratory analysis |
 | `collect-crops --input <images>` | Export unlabeled vehicle crops for manual reference selection |

@@ -11,6 +11,7 @@ venv
 **/.ipynb_checkpoints
 **/*.zip
 data/forest_vehicles
+data/.forest-download-*
 data/visdrone
 data/reference_dataset_augmented
 artifacts
