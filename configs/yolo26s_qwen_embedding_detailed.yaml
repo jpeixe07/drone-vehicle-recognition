@@ -1,0 +1,45 @@
+# Vehicle-focused instruction, original minimum image area, and 0.70 rejection threshold.
+classes_file: configs/classes.yaml
+datasets_file: configs/datasets.yaml
+detector:
+  confidence_threshold: 0.4
+  crop_margin_pixels: 10
+  image_size: 1280
+  iou_threshold: 0.5
+  provider: ultralytics
+  source: local
+  vehicle_classes:
+  - vehicle
+  weights: artifacts/weights/vehicle_detection_yolo26s_MVRSD_VIS.pt
+device: cuda
+inference:
+  duplicate_iou_threshold: 0.5
+  output_directory: outputs
+  rotations_degrees:
+  - 0
+  save_annotated_images: true
+recognition:
+  acceptance_threshold: 0.7
+  backbone: qwen3_vl_embedding_2b
+  batch_size: 1
+  class_score: maximum_reference_similarity
+  cpu_threads: 4
+  feature_dimension: 2048
+  normalization: l2
+  preprocessing: qwen_native
+  pretrained_on: qwen3_vl_multimodal_embedding
+  projection_head: false
+  similarity: cosine
+  top_k: 3
+  unknown_label: unknown
+  weights: Qwen/Qwen3-VL-Embedding-2B
+  qwen:
+    min_pixels: 4096
+    max_pixels: 262144
+    instruction: Represent the vehicle's body shape, proportions, cabin, cargo area
+      and visible equipment. Use color patterns and contrasts only as secondary cues.
+      Focus on the vehicle rather than the background.
+references:
+  directory: data/reference_dataset
+  index_directory: artifacts/reference_indexes/qwen3_vl_embedding_2b_detailed
+schema_version: 1
