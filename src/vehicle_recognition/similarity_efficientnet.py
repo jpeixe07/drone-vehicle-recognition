@@ -19,9 +19,9 @@ import torch
 from torch import nn
 from torch.nn import functional as F
 import torchvision
-from torchvision import models
+from torchvision import models, transforms
 
-from .configuration import IMAGE_SUFFIXES
+from .configuration import IMAGE_SUFFIXES, PREPROCESSING_MODES
 
 
 def file_sha256(path: Path) -> str:
@@ -89,11 +89,45 @@ def checkpoint_sha256(checkpoint) -> str:
     return digest
 
 
+class PadToSquare:
+    """Center the complete RGB image on a square without cropping or stretching."""
+
+    def __init__(self, fill: tuple[int, int, int]):
+        self.fill = fill
+
+    def __call__(self, image: Image.Image) -> Image.Image:
+        width, height = image.size
+        side = max(width, height)
+        left, top = (side-width)//2, (side-height)//2
+        return ImageOps.expand(image, (left, top, side-width-left, side-height-top), fill=self.fill)
+
+    def __repr__(self) -> str:
+        return f"{type(self).__name__}(fill={self.fill})"
+
+
+def feature_preprocessing(checkpoint, mode: str = "checkpoint_preset"):
+    if mode not in PREPROCESSING_MODES or mode == "qwen_native":
+        raise ValueError(f"Unsupported preprocessing: {mode}")
+    preset = checkpoint.transforms()
+    if mode == "checkpoint_preset":
+        return preset
+    size = preset.crop_size[0]
+    # Near-zero after checkpoint normalization, without a strong black border.
+    fill = tuple(round(channel*255) for channel in preset.mean)
+    return transforms.Compose([
+        PadToSquare(fill),
+        transforms.Resize((size, size), interpolation=preset.interpolation, antialias=preset.antialias),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=preset.mean, std=preset.std),
+    ])
+
+
 class VehicleFeatureExtractor(nn.Module):
     """Frozen pretrained backbone with pooled, L2-normalized visual features."""
 
     def __init__(self, backbone: str = "efficientnet_b3", weights: str = "IMAGENET1K_V1",
-                 device: str = "auto", allow_download: bool = False):
+                 device: str = "auto", allow_download: bool = False,
+                 preprocessing: str = "checkpoint_preset"):
         super().__init__()
         builder, checkpoint, self.feature_dim = backbone_spec(backbone, weights)
         if not checkpoint_path(checkpoint).is_file() and not allow_download:
@@ -104,12 +138,13 @@ class VehicleFeatureExtractor(nn.Module):
         base = builder(weights=checkpoint)
         self.encoder = nn.Sequential(*list(base.children())[:-2]) if backbone == "resnet50" else base.features
         self.pooling = nn.AdaptiveAvgPool2d((1, 1))
-        self.transform = checkpoint.transforms()
+        self.transform = feature_preprocessing(checkpoint, preprocessing)
         self.device = resolve_device(device)
         self.to(self.device).eval().requires_grad_(False)
         self.metadata = {
             "backbone": backbone, "weights": checkpoint.name, "checkpoint_sha256": digest,
             "feature_dimension": self.feature_dim, "preprocessing": repr(self.transform),
+            "preprocessing_mode": preprocessing,
             "normalization": "l2", "projection_head": False, "torchvision": torchvision.__version__.split("+")[0],
             "implementation_sha256": file_sha256(Path(__file__)),
         }
@@ -278,10 +313,17 @@ class DroneVehicleClassifier:
                  device: str = "auto", weights: str = "IMAGENET1K_V1", use_detector: bool = True,
                  threshold: float = 0.78, top_k: int = 3, batch_size: int = 16,
                  unknown_label: str = "unknown", detection_settings: dict | None = None,
-                 extractor=None, detector=None):
+                 extractor=None, detector=None, preprocessing: str = "checkpoint_preset",
+                 extractor_options: dict | None = None):
+        if preprocessing not in PREPROCESSING_MODES:
+            raise ValueError(f"Unsupported preprocessing: {preprocessing}")
+        if (backbone == "qwen3_vl_embedding_2b") != (preprocessing == "qwen_native"):
+            raise ValueError("Qwen requires qwen_native preprocessing; CNNs use their own modes")
         self.device = resolve_device(device)
         self.yolo_model_path = Path(yolo_model_path) if yolo_model_path else None
         self.backbone, self.weights = backbone, weights
+        self.preprocessing = preprocessing
+        self.extractor_options = dict(extractor_options or {})
         self.use_detector = use_detector
         self.top_k, self.batch_size = top_k, batch_size
         self.detection_settings = detection_settings or {}
@@ -291,7 +333,12 @@ class DroneVehicleClassifier:
     @property
     def extractor(self):
         if self._extractor is None:
-            self._extractor = VehicleFeatureExtractor(self.backbone, self.weights, self.device)
+            if self.backbone == "qwen3_vl_embedding_2b":
+                from .qwen_embeddings import QwenFeatureExtractor
+                self._extractor = QwenFeatureExtractor(device=self.device, **self.extractor_options)
+            else:
+                self._extractor = VehicleFeatureExtractor(self.backbone, self.weights, self.device,
+                                                         preprocessing=self.preprocessing)
         return self._extractor
 
     @property
