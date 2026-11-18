@@ -1,0 +1,8 @@
+# Closed-set evaluation catalog: classes annotated in the forest dataset.
+schema_version: 1
+labels:
+- arquus_vt4
+- renault_ccfm
+- renault_gbc180
+- vltt
+unknown_label: unknown

@@ -125,6 +125,10 @@ def dispatch(args) -> dict:
     if args.device:
         settings.config["device"] = args.device
     if getattr(args, "backbone", None):
+        if args.backbone != settings.config["recognition"]["backbone"] and "qwen3_vl_embedding_2b" in {
+            args.backbone, settings.config["recognition"]["backbone"]
+        }:
+            raise ValueError("Switching between Qwen and CNN extractors requires a matching --config")
         settings.config["recognition"]["backbone"] = args.backbone
         settings.config["recognition"]["feature_dimension"] = FEATURE_DIMENSIONS[args.backbone]
     if getattr(args, "references", None):

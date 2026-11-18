@@ -50,17 +50,16 @@ The initial detector candidate is the community [YOLOv8s checkpoint fine-tuned o
 
 ### Demonstration vehicles and simulated references
 
-The illustrations below show the five vehicle types represented by the simulation's 3D models and used to demonstrate the recognition approach. They are documentation illustrations; the recognition gallery consists of the simulated aerial crops described above.
+The illustrations below show the four vehicle types represented by the simulation's 3D models and used to demonstrate the recognition approach. They are documentation illustrations; the recognition gallery consists of the simulated aerial crops described above.
 
 | Label | Initial reference images (simulation, including augmentation) | Vehicle illustration |
 | --- | ---: | --- |
 | `arquus_vt4` | 30 | <img src="docs/images/vehicles/arquus_vt4.png" alt="Arquus VT4 vehicle examples" width="280"> |
-| `panhard_vbl` | 13 | <img src="docs/images/vehicles/panhard_vbl.png" alt="Panhard VBL vehicle" width="280"> |
 | `renault_ccfm` | 8 | <img src="docs/images/vehicles/renault_ccfm.png" alt="Renault CCFM fire vehicle" width="280"> |
 | `renault_gbc180` | 13 | <img src="docs/images/vehicles/renault_gbc180.png" alt="Renault GBC 180 vehicle" width="280"> |
 | `vltt` | 19 | <img src="docs/images/vehicles/vltt.png" alt="VLTT vehicle example" width="280"> |
 
-These 83 simulation-derived starter images are replaceable reference assets, not evaluation ground truth. There are no additional category groupings. `unknown` is a recognition outcome, not an extra catalog class.
+These 70 simulation-derived starter images are replaceable reference assets, not evaluation ground truth. There are no additional category groupings. `unknown` is a recognition outcome, not an extra catalog class.
 
 Adding references and rebuilding their index can extend the recognition catalog without retraining the detector, provided that the detector localizes the relevant vehicles and the embeddings distinguish them. Detection confidence and cosine similarity are separate measurements; a similarity score is not a calibrated probability of correctness.
 
@@ -69,6 +68,47 @@ Optional reference augmentation and rotated-image inference are available. Rotat
 For explicitly associated crops of the same vehicle, recognition averages the per-class maximum similarities across observations. All class scores participate before the top candidates are selected, so a consistently similar class is not discarded because it was absent from an individual crop's top three. Independent vehicles are never pooled into one vote. The initial scope is offline still images; image ordering alone does not establish object identity.
 
 The reference index stores each image's embedding and a fingerprint of the gallery contents, checkpoint, preprocessing, extractor version, and recognition module implementation. A changed gallery or incompatible extractor causes inference to reject the stale index and request rebuilding it.
+
+For elongated vehicle crops, `recognition.preprocessing: square_pad_resize` preserves the complete image: it adds centered padding in the checkpoint's mean RGB color, resizes the square to the checkpoint's input size (300 × 300 for EfficientNet-B3), and applies its normalization. References and observations use the same transform. The default `checkpoint_preset` remains available for comparison. Changing preprocessing requires rebuilding the index.
+
+```bash
+python -m vehicle_recognition index --config configs/yolo26s_mvrsd_vis_square_pad.yaml --device cuda
+python -m vehicle_recognition evaluate --config configs/yolo26s_mvrsd_vis_square_pad.yaml --device cuda --splits all --output outputs/forest_validation_square_pad
+```
+
+The square-padding configuration stores its index separately from the default. It keeps the detector and recognition threshold unchanged; improvements must be measured before adopting it.
+
+### Qwen image embeddings
+
+The optional `qwen3_vl_embedding_2b` backend uses the specialized multimodal embedding model [Qwen3-VL-Embedding-2B checkpoint](https://huggingface.co/Qwen/Qwen3-VL-Embedding-2B), with its revision pinned in `qwen_embeddings.py`. It replaces the CNN encoder while keeping YOLO localization, per-reference cosine matching, and the configured catalog. It encodes images with the authors' fixed instruction and pools the last non-padding token into a normalized 2,048-dimensional vector. No labels or generated descriptions are supplied to the encoder.
+
+```bash
+python -m pip install -e . -r requirements-qwen.txt
+python -m vehicle_recognition prepare --config configs/yolo26s_qwen_embedding.yaml --device cuda
+python -m vehicle_recognition index --config configs/yolo26s_qwen_embedding.yaml --device cuda
+python -m vehicle_recognition evaluate --config configs/yolo26s_qwen_embedding.yaml --device cuda --splits all --output outputs/forest_validation_qwen
+```
+
+The initial backend requires CUDA and uses NF4 weight quantization, BF16 computation, SDPA attention, and one image per batch for the 6 GB GPU. Its native processor preserves aspect ratio, with images limited to 262,144 pixels. Model files are downloaded explicitly by `prepare` into the ignored Hugging Face cache; subsequent index/predict/evaluate calls load local files only. Separate indices record the model files' hashes, processor, instruction, quantization and library versions. The 0.78 threshold remains an experimental control, not a calibrated confidence for Qwen scores. Compare Top-1/Top-3 separately from acceptance and report any accuracy changes before adopting the backend.
+
+`configs/yolo26s_qwen_embedding_detailed.yaml` uses a vehicle-focused instruction, the original 4,096-pixel minimum, and a 0.70 rejection threshold. Body shape, proportions, cabin, cargo area and equipment are the main cues; color patterns and contrast are secondary. Encoder settings are configurable under `recognition.qwen` (`min_pixels`, `max_pixels`, `instruction`) and apply equally to references and queries. The original configuration keeps the generic instruction and 0.78 threshold. Changing encoder settings requires rebuilding the index; metadata rejects indices built with different settings. Changing only the acceptance threshold leaves the embeddings unchanged. The specialized configuration uses a separate index directory.
+
+### Direct EfficientNet/Qwen comparison
+
+`configs/compare_efficientnet_margin5.yaml` and `configs/compare_qwen_margin5.yaml` share the same 82-reference gallery, YOLO26 detector and **5-pixel crop margin**. Change `detector.crop_margin_pixels` in both files to test another margin. Rejection is disabled with `acceptance_threshold: -1.0`; each detected vehicle receives a catalog label. EfficientNet-B3 preserves the whole crop, while Qwen uses the generic embedding instruction, as selected for this experiment.
+
+```bash
+python scripts/prepare-comparison-gallery.py
+python -m vehicle_recognition prepare --config configs/compare_efficientnet_margin5.yaml --device cuda
+python -m vehicle_recognition prepare --config configs/compare_qwen_margin5.yaml --device cuda
+python -m vehicle_recognition index --config configs/compare_efficientnet_margin5.yaml --device cuda
+python -m vehicle_recognition evaluate --config configs/compare_efficientnet_margin5.yaml --device cuda --splits all --output outputs/recognition_comparison_margin5/runs_82/efficientnet
+python -m vehicle_recognition index --config configs/compare_qwen_margin5.yaml --device cuda
+python -m vehicle_recognition evaluate --config configs/compare_qwen_margin5.yaml --device cuda --splits all --output outputs/recognition_comparison_margin5/runs_82/qwen
+python scripts/plot-recognition-comparison.py
+```
+
+Evaluation output directories must be new or empty. The gallery preparation script selects the four annotated classes from the original and additional images in `data/reference_dataset_additional/`, producing 82 references. It verifies existing inputs before reuse. Figures can be regenerated from the saved evaluations without rerunning inference. Open `outputs/recognition_comparison_margin5/analysis/index.html` for the visual report: PNG/PDF metrics, confusion matrices, spatial success/error maps, a separate classification-error/YOLO-miss map, an overall performance figure, a Top-1/Top-3 accuracy and score table, scores, coverage curves, paired frames with three side-by-side images, and one error grid per extractor. CSVs preserve the underlying data. `outputs/backup/` keeps the best earlier case for each encoder, including its gallery and original metadata.
 
 ## Folder structure
 
@@ -83,7 +123,7 @@ The reference index stores each image's embedding and a fingerprint of the galle
 ├── requirements.txt
 ├── configs/
 │   ├── default.yaml                 # Recognition, detector, device, and paths
-│   ├── classes.yaml                 # Canonical five-class recognition catalog
+│   ├── classes.yaml                 # Default recognition catalog
 │   └── datasets.yaml                # Roboflow and optional VisDrone sources
 ├── src/vehicle_recognition/
 │   ├── __main__.py                  # python -m vehicle_recognition

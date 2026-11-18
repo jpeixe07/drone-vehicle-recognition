@@ -9,7 +9,27 @@ from pathlib import Path
 import yaml
 
 IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".bmp", ".webp", ".tif", ".tiff"}
-FEATURE_DIMENSIONS = {"efficientnet_b3": 1536, "convnext_base": 1024, "resnet50": 2048}
+FEATURE_DIMENSIONS = {"efficientnet_b3": 1536, "convnext_base": 1024, "resnet50": 2048,
+                      "qwen3_vl_embedding_2b": 2048}
+PREPROCESSING_MODES = {"checkpoint_preset", "square_pad_resize", "qwen_native"}
+QWEN_DEFAULT_OPTIONS = {"min_pixels": 4096, "max_pixels": 262144,
+                        "instruction": "Represent the user's input."}
+
+
+def qwen_options(options: dict | None = None) -> dict:
+    if options is None:
+        options = {}
+    if not isinstance(options, dict) or set(options) - QWEN_DEFAULT_OPTIONS.keys():
+        raise ValueError("Qwen options must contain only min_pixels, max_pixels and instruction")
+    result = {**QWEN_DEFAULT_OPTIONS, **options}
+    if any(type(result[key]) is not int for key in ("min_pixels", "max_pixels")):
+        raise ValueError("Qwen pixel limits must be integers")
+    if not 4096 <= result["min_pixels"] <= result["max_pixels"]:
+        raise ValueError("Qwen requires 4096 <= min_pixels <= max_pixels")
+    if not isinstance(result["instruction"], str) or not result["instruction"].strip():
+        raise ValueError("Qwen instruction must be a nonempty string")
+    result["instruction"] = result["instruction"].strip()
+    return result
 
 
 def read_yaml(path: Path) -> dict:
@@ -67,8 +87,16 @@ def load_settings(root: Path, config_path: Path | None = None) -> ProjectSetting
     recognition["feature_dimension"] = FEATURE_DIMENSIONS[recognition["backbone"]]
     if recognition.get("projection_head", False):
         raise ValueError("This inference baseline uses pretrained features without a projection head")
-    if recognition.get("preprocessing") != "checkpoint_preset":
-        raise ValueError("Use checkpoint_preset preprocessing for references and observations")
+    if recognition.get("preprocessing") not in PREPROCESSING_MODES:
+        raise ValueError(f"Unsupported preprocessing; choose one of {sorted(PREPROCESSING_MODES)}")
+    if (recognition["backbone"] == "qwen3_vl_embedding_2b") != (recognition["preprocessing"] == "qwen_native"):
+        raise ValueError("The Qwen embedding backend requires qwen_native preprocessing; CNNs use their own modes")
+    if recognition["backbone"] == "qwen3_vl_embedding_2b" and recognition["weights"] != "Qwen/Qwen3-VL-Embedding-2B":
+        raise ValueError("Use the dedicated Qwen/Qwen3-VL-Embedding-2B checkpoint")
+    if recognition["backbone"] == "qwen3_vl_embedding_2b":
+        qwen_options(recognition.get("qwen"))
+    elif "qwen" in recognition:
+        raise ValueError("recognition.qwen options require the Qwen backend")
     for key, expected in {"normalization": "l2", "similarity": "cosine", "class_score": "maximum_reference_similarity"}.items():
         if recognition.get(key) != expected:
             raise ValueError(f"Unsupported recognition {key}: use {expected}")

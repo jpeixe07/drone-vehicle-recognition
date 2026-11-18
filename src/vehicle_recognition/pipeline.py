@@ -25,6 +25,8 @@ def make_classifier(settings: ProjectSettings, use_detector: bool = True) -> Dro
         use_detector=use_detector, threshold=float(recognition["acceptance_threshold"]),
         top_k=int(recognition["top_k"]), batch_size=int(recognition.get("batch_size", 16)),
         unknown_label=recognition["unknown_label"], detection_settings=settings.config["detector"],
+        preprocessing=recognition["preprocessing"],
+        extractor_options=recognition.get("qwen"),
     )
 
 

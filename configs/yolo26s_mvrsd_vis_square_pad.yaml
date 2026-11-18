@@ -1,0 +1,40 @@
+# YOLO26s with full-crop recognition: square padding instead of center cropping.
+# Rebuild the separate reference index before prediction or evaluation.
+schema_version: 1
+device: auto
+classes_file: configs/classes.yaml
+datasets_file: configs/datasets.yaml
+detector:
+  provider: ultralytics
+  weights: artifacts/weights/vehicle_detection_yolo26s_MVRSD_VIS.pt
+  vehicle_classes:
+  - vehicle
+  confidence_threshold: 0.4
+  iou_threshold: 0.5
+  image_size: 1280
+  crop_margin_pixels: 10
+  source: local
+recognition:
+  backbone: efficientnet_b3
+  weights: IMAGENET1K_V1
+  pretrained_on: imagenet1k
+  preprocessing: square_pad_resize
+  feature_dimension: 1536
+  projection_head: false
+  normalization: l2
+  similarity: cosine
+  class_score: maximum_reference_similarity
+  top_k: 3
+  batch_size: 16
+  cpu_threads: 4
+  acceptance_threshold: 0.78
+  unknown_label: unknown
+references:
+  directory: data/reference_dataset
+  index_directory: artifacts/reference_indexes/square_pad_resize
+inference:
+  rotations_degrees:
+  - 0
+  duplicate_iou_threshold: 0.5
+  output_directory: outputs
+  save_annotated_images: true

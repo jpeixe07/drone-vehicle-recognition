@@ -59,12 +59,16 @@ def prepare_weights(settings: ProjectSettings, force: bool = False) -> dict:
                   "requested_revision": revision, "filename": detector["huggingface_filename"],
                   "file": target.name, "sha256": file_sha256(target)}
     recognition = settings.config["recognition"]
-    _, checkpoint, dimension = backbone_spec(recognition["backbone"], recognition["weights"])
-    path = checkpoint_path(checkpoint)
-    if not path.is_file():
-        checkpoint.get_state_dict(progress=True, check_hash=True)
-    extractor = {"backbone": recognition["backbone"], "weights": checkpoint.name, "url": checkpoint.url,
-                 "file": str(path), "sha256": checkpoint_sha256(checkpoint), "feature_dimension": dimension}
+    if recognition["backbone"] == "qwen3_vl_embedding_2b":
+        from .qwen_embeddings import prepare_qwen_weights
+        extractor = prepare_qwen_weights(force=force)
+    else:
+        _, checkpoint, dimension = backbone_spec(recognition["backbone"], recognition["weights"])
+        path = checkpoint_path(checkpoint)
+        if not path.is_file():
+            checkpoint.get_state_dict(progress=True, check_hash=True)
+        extractor = {"backbone": recognition["backbone"], "weights": checkpoint.name, "url": checkpoint.url,
+                     "file": str(path), "sha256": checkpoint_sha256(checkpoint), "feature_dimension": dimension}
     sources[target.name] = source
     manifest.setdefault("extractors", {})[recognition["backbone"]] = extractor
     write_json(manifest_path, manifest)

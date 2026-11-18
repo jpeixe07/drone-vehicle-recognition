@@ -1,0 +1,4 @@
+# Optional local Qwen embedding backend; install alongside the project.
+transformers>=4.57.1,<5
+accelerate>=1.2,<2
+bitsandbytes>=0.48,<0.50
